@@ -17,6 +17,26 @@ from app.schemas.auth import (
 from app.services.auth_service import (
     verify_email,
 )
+# from app.database import get_db
+from app.models.password_reset_token import PasswordResetToken
+from app.models.user import User
+from app.schemas.password_reset import ForgotPasswordRequest
+from app.schemas.password_reset import ResetPasswordRequest
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import (
+    generate_password_reset_token,
+    hash_password_reset_token,
+    hash_password
+)
+from app.schemas.password_reset import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+)
 
 router = APIRouter(
     prefix="/auth",
@@ -148,3 +168,118 @@ def verify_user_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+@router.post("/forgot-password")
+def forgot_password(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    result = db.execute(
+        select(User).where(User.email == data.email)
+    )
+
+    user = result.scalar_one_or_none()
+
+    # Do not reveal whether the email exists.
+    if not user:
+        return {
+            "success": True,
+            "message": "If the email exists, a password reset link has been sent.",
+        }
+
+    token = generate_password_reset_token()
+    token_hash = hash_password_reset_token(token)
+
+    expires_at = (
+        datetime.utcnow()
+        + timedelta(minutes=15)
+    )
+
+
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        used=False,
+
+    )
+
+    db.add(reset_token)
+    db.commit()
+
+    # Email sending will be connected here.
+    reset_link = (
+        f"http://localhost:3000/reset-password?token={token}"
+    )
+
+    # TEMPORARY DEVELOPMENT ONLY
+    print(f"Password reset link: {reset_link}")
+
+    return {
+        "success": True,
+        "link":reset_link,
+        "message": "If the email exists, a password reset link has been sent.",
+    }
+
+@router.post("/reset-password")
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    token_hash = hash_password_reset_token(data.token)
+
+    result = db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == token_hash
+        )
+    )
+
+    reset_token = result.scalar_one_or_none()
+
+    if not reset_token:
+        return {
+            "success": False,
+            "message": "Invalid or expired reset token.",
+        }
+
+    now = datetime.utcnow()
+
+
+    if reset_token.used:
+        return {
+            "success": False,
+            "message": "Invalid or expired reset token.",
+        }
+
+    if reset_token.expires_at <= now:
+        return {
+            "success": False,
+            "message": "Invalid or expired reset token.",
+        }
+
+    result = db.execute(
+        select(User).where(
+            User.id == reset_token.user_id
+        )
+    )
+
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return {
+            "success": False,
+            "message": "Invalid or expired reset token.",
+        }
+
+    # Use your existing password hashing function
+    user.password_hash = hash_password(data.new_password)
+
+    # Make the token single-use
+    reset_token.used = True
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Password reset successfully.",
+    }

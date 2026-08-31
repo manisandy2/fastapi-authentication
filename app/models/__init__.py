@@ -5,5 +5,6 @@ __all__ = [
     "User",
     "RefreshToken",
     "EmailVerificationToken",
+    "password_reset_tokens",
 
 ]
