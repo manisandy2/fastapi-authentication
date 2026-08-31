@@ -28,6 +28,13 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(
     )
 )
 
+EMAIL_VERIFICATION_EXPIRE_MINUTES = int(
+    os.getenv(
+        "EMAIL_VERIFICATION_EXPIRE_MINUTES",
+        "30",
+    )
+)
+
 # Fail immediately if SECRET_KEY is missing
 if not SECRET_KEY:
     raise RuntimeError(

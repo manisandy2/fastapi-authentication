@@ -11,6 +11,12 @@ from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.auth import LogoutRequest
 from app.services.auth_service import logout_user
+from app.schemas.auth import (
+    EmailVerificationRequest,
+)
+from app.services.auth_service import (
+    verify_email,
+)
 
 router = APIRouter(
     prefix="/auth",
@@ -116,3 +122,29 @@ def logout(
         "success": True,
         "message": "Logged out successfully",
     }
+
+@router.post("/verify-email")
+def verify_user_email(
+    verification_data: EmailVerificationRequest,
+    db: Session = Depends(get_db),
+):
+
+    try:
+
+        user = verify_email(
+            db=db,
+            raw_token=verification_data.token,
+        )
+
+        return {
+            "success": True,
+            "message": "Email verified successfully",
+            "user_id": user.id,
+        }
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )

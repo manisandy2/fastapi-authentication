@@ -15,7 +15,17 @@ from datetime import datetime, timezone,timedelta
 from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
 from app.models.refresh_token import RefreshToken
 from app.core.time import utc_now
-
+from app.core.config import (
+    EMAIL_VERIFICATION_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
+from app.core.security import (
+    create_secure_token,
+    hash_token,
+)
+from app.models.email_verification_token import (
+    EmailVerificationToken,
+)
 
 def create_user(db: Session, user_data: UserCreate) -> User:
     # Check whether email or username already exists
@@ -56,6 +66,16 @@ def create_user(db: Session, user_data: UserCreate) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+    verification_token = create_email_verification_token(
+    db=db,
+    user=user,
+    )
+    # Development only:
+    print(
+    f"EMAIL VERIFICATION TOKEN: {verification_token}"
+    )
+
+
 
     return user
 
@@ -278,3 +298,96 @@ def logout_user(
     stored_token.revoked_at = utc_now()
 
     db.commit()
+
+
+def create_email_verification_token(
+    db: Session,
+    user: User,
+) -> str:
+
+    # Generate secure random token
+    raw_token = create_secure_token()
+
+    # Store only token hash
+    token_hash = hash_token(raw_token)
+
+    # Token expiration
+    expires_at = (
+        utc_now()
+        + timedelta(
+            minutes=EMAIL_VERIFICATION_EXPIRE_MINUTES
+        )
+    )
+
+    verification_token = EmailVerificationToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        used=False,
+    )
+
+    db.add(verification_token)
+    db.commit()
+
+    # Return raw token for email delivery
+    return raw_token
+
+def verify_email(
+    db: Session,
+    raw_token: str,
+) -> User:
+
+    # Hash supplied token
+    token_hash = hash_token(raw_token)
+
+    # Find token
+    verification_token = (
+        db.query(EmailVerificationToken)
+        .filter(
+            EmailVerificationToken.token_hash
+            == token_hash
+        )
+        .first()
+    )
+
+    if not verification_token:
+        raise ValueError("Invalid verification token")
+
+    # Prevent token reuse
+    if verification_token.used:
+        raise ValueError("Verification token already used")
+
+    # Check expiration
+    expires_at = verification_token.expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(
+            tzinfo=timezone.utc
+        )
+
+    if expires_at <= utc_now():
+        raise ValueError("Verification token expired")
+
+    # Find user
+    user = (
+        db.query(User)
+        .filter(
+            User.id == verification_token.user_id
+        )
+        .first()
+    )
+
+    if not user:
+        raise ValueError("Invalid verification token")
+
+    # Verify user
+    user.is_verified = True
+
+    # Mark token as used
+    verification_token.used = True
+    verification_token.used_at = utc_now()
+
+    db.commit()
+    db.refresh(user)
+
+    return user
