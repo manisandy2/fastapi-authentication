@@ -1,0 +1,8 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+auth.db
+.pytest_cache/
+.coverage
