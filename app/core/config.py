@@ -41,3 +41,17 @@ if not SECRET_KEY:
         "SECRET_KEY is not configured. "
         "Add SECRET_KEY to your .env file."
     )
+
+# ============================================================
+# Security / CORS configuration
+# ============================================================
+
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1",
+).split(",")
+
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000",
+).split(",")
