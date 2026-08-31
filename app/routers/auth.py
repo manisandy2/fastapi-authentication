@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.schemas.user import UserCreate, UserResponse
 from app.services.auth_service import create_user
-
+from app.schemas.auth import LoginRequest, TokenResponse
+from app.services.auth_service import login_user
 
 router = APIRouter(
     prefix="/auth",
@@ -29,4 +30,37 @@ def register(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
+        )
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+)
+def login(
+    login_data: LoginRequest,
+    db: Session = Depends(get_db),
+):
+
+    try:
+
+        access_token = login_user(
+            db=db,
+            email=login_data.email,
+            password=login_data.password,
+        )
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={
+                "WWW-Authenticate": "Bearer",
+            },
         )

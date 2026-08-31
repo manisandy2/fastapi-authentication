@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import UserCreate
-
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
+from datetime import datetime, timezone
 
 def create_user(db: Session, user_data: UserCreate) -> User:
     # Check whether email or username already exists
@@ -47,3 +52,56 @@ def create_user(db: Session, user_data: UserCreate) -> User:
     db.refresh(user)
 
     return user
+
+def authenticate_user(
+    db: Session,
+    email: str,
+    password: str,
+) -> User:
+
+    # Find user by email
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .first()
+    )
+
+    # Do not reveal whether email exists
+    if not user:
+        raise ValueError("Invalid email or password")
+
+    # Verify password
+    if not verify_password(
+        password,
+        user.password_hash,
+    ):
+        raise ValueError("Invalid email or password")
+
+    # Check account status
+    if not user.is_active:
+        raise ValueError("User account is inactive")
+
+    # Update last login
+    user.last_login_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+def login_user(
+    db: Session,
+    email: str,
+    password: str,
+) -> str:
+
+    user = authenticate_user(
+        db=db,
+        email=email,
+        password=password,
+    )
+
+    return create_access_token(
+        user_id=user.id,
+    )
