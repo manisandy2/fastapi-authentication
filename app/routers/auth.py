@@ -9,6 +9,8 @@ from app.services.auth_service import login_user
 
 from app.dependencies.auth import get_current_user
 from app.models.user import User
+from app.schemas.auth import LogoutRequest
+from app.services.auth_service import logout_user
 
 router = APIRouter(
     prefix="/auth",
@@ -98,3 +100,19 @@ def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         )
+
+
+@router.post("/logout")
+def logout(
+    logout_data: LogoutRequest,
+    db: Session = Depends(get_db),
+):
+    logout_user(
+        db=db,
+        raw_refresh_token=logout_data.refresh_token,
+    )
+
+    return {
+        "success": True,
+        "message": "Logged out successfully",
+    }

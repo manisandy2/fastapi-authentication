@@ -14,6 +14,8 @@ from app.core.security import (
 from datetime import datetime, timezone,timedelta
 from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
 from app.models.refresh_token import RefreshToken
+from app.core.time import utc_now
+
 
 def create_user(db: Session, user_data: UserCreate) -> User:
     # Check whether email or username already exists
@@ -242,3 +244,37 @@ def refresh_user_tokens(
         "refresh_token": new_refresh_token,
         "token_type": "bearer",
     }
+
+def logout_user(
+    db: Session,
+    raw_refresh_token: str,
+) -> None:
+
+    # Hash the refresh token supplied by the client
+    token_hash = hash_refresh_token(
+        raw_refresh_token
+    )
+
+    # Find the refresh token
+    stored_token = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.token_hash == token_hash
+        )
+        .first()
+    )
+
+    # If token doesn't exist, simply return.
+    # This avoids revealing token information.
+    if not stored_token:
+        return
+
+    # Already revoked
+    if stored_token.revoked:
+        return
+
+    # Revoke token
+    stored_token.revoked = True
+    stored_token.revoked_at = utc_now()
+
+    db.commit()
