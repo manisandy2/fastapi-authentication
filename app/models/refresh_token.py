@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-
+from app.core.time import utc_now
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,7 +49,7 @@ class RefreshToken(Base):
     # Creation time
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )
 

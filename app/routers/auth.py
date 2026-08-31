@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.schemas.user import UserCreate, UserResponse
-from app.services.auth_service import create_user
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.services.auth_service import create_user,login_user,refresh_user_tokens
+from app.schemas.auth import LoginRequest, TokenResponse,RefreshRequest
 from app.services.auth_service import login_user
 
 from app.dependencies.auth import get_current_user
@@ -73,3 +73,28 @@ def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+)
+def refresh_token(
+    refresh_data: RefreshRequest,
+    db: Session = Depends(get_db),
+):
+
+    try:
+
+        tokens = refresh_user_tokens(
+            db=db,
+            raw_refresh_token=refresh_data.refresh_token,
+        )
+
+        return tokens
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )

@@ -130,6 +130,7 @@ def create_user_refresh_token(
         user_id=user.id,
         token_hash=token_hash,
         expires_at=expires_at,
+        revoked=False,
     )
 
     db.add(refresh_token)
@@ -161,5 +162,83 @@ def login_user(
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
+
+def refresh_user_tokens(
+    db: Session,
+    raw_refresh_token: str,
+) -> dict:
+
+    # Hash the token supplied by the client
+    token_hash = hash_refresh_token(
+        raw_refresh_token
+    )
+
+    # Find token record
+    stored_token = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.token_hash == token_hash
+        )
+        .first()
+    )
+
+    # Don't reveal whether the token exists
+    if not stored_token:
+        raise ValueError("Invalid refresh token")
+
+    # Already used/revoked
+    if stored_token.revoked:
+        raise ValueError("Invalid refresh token")
+
+    # Check expiration
+    now = datetime.now(timezone.utc)
+
+    # SQLite may return a naive datetime
+    expires_at = stored_token.expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(
+            tzinfo=timezone.utc
+        )
+
+    if expires_at <= now:
+        raise ValueError("Refresh token expired")
+
+    # Find user
+    user = (
+        db.query(User)
+        .filter(User.id == stored_token.user_id)
+        .first()
+    )
+
+    if not user:
+        raise ValueError("Invalid refresh token")
+
+    # Check account
+    if not user.is_active:
+        raise ValueError("User account is inactive")
+
+    # Revoke OLD refresh token
+    stored_token.revoked = True
+    stored_token.revoked_at = datetime.utcnow()
+
+    db.commit()
+
+    # Create NEW access token
+    access_token = create_access_token(
+        user_id=user.id
+    )
+
+    # Create NEW refresh token
+    new_refresh_token = create_user_refresh_token(
+        db=db,
+        user=user,
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
         "token_type": "bearer",
     }
