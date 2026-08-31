@@ -47,16 +47,13 @@ def login(
 
     try:
 
-        access_token = login_user(
+        tokens = login_user(
             db=db,
             email=login_data.email,
             password=login_data.password,
         )
 
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-        }
+        return tokens
 
     except ValueError as exc:
 

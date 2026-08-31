@@ -1,5 +1,15 @@
 from pwdlib import PasswordHash
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+from app.core.config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    SECRET_KEY,
+)
 
+import jwt
+from pwdlib import PasswordHash
 
 # Password hashing configuration
 password_hash = PasswordHash.recommended()
@@ -16,18 +26,6 @@ def verify_password(
     hashed_password: str,
 ) -> bool:
     return password_hash.verify(password, hashed_password)
-
-
-from datetime import datetime, timedelta, timezone
-
-import jwt
-from pwdlib import PasswordHash
-
-from app.core.config import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    ALGORITHM,
-    SECRET_KEY,
-)
 
 
 # Password hashing
@@ -67,3 +65,12 @@ def create_access_token(user_id: str) -> str:
     )
 
     return token
+
+def create_refresh_token() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(
+        token.encode("utf-8")
+    ).hexdigest()

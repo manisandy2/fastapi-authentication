@@ -6,10 +6,14 @@ from app.models.user import User
 from app.schemas.user import UserCreate
 from app.core.security import (
     create_access_token,
+    create_refresh_token,
     hash_password,
+    hash_refresh_token,
     verify_password,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone,timedelta
+from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
+from app.models.refresh_token import RefreshToken
 
 def create_user(db: Session, user_data: UserCreate) -> User:
     # Check whether email or username already exists
@@ -105,3 +109,57 @@ def login_user(
     return create_access_token(
         user_id=user.id,
     )
+
+def create_user_refresh_token(
+    db: Session,
+    user: User,
+) -> str:
+
+    # Generate secure random refresh token
+    raw_token = create_refresh_token()
+
+    # Store only its hash
+    token_hash = hash_refresh_token(raw_token)
+
+    expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+
+    refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+    )
+
+    db.add(refresh_token)
+    db.commit()
+
+    return raw_token
+
+def login_user(
+    db: Session,
+    email: str,
+    password: str,
+) -> dict:
+
+    user = authenticate_user(
+        db=db,
+        email=email,
+        password=password,
+    )
+
+    access_token = create_access_token(
+        user_id=user.id,
+    )
+
+    refresh_token = create_user_refresh_token(
+        db=db,
+        user=user,
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }

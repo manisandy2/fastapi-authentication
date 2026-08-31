@@ -21,7 +21,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
         "30",
     )
 )
-
+REFRESH_TOKEN_EXPIRE_DAYS = int(
+    os.getenv(
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "7",
+    )
+)
 
 # Fail immediately if SECRET_KEY is missing
 if not SECRET_KEY:
