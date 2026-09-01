@@ -40,10 +40,7 @@ from app.schemas.password_reset import (
 
 from fastapi import Request
 from app.core.rate_limit import check_rate_limit
-from app.core.config import (
-    RESET_PASSWORD_LIMIT,
-    RESET_PASSWORD_WINDOW,
-)
+
 
 from app.services.rate_limiter import (
     is_login_blocked,
@@ -55,10 +52,25 @@ from app.services.rate_limiter import (
     get_forgot_password_retry_after,
 )
 
+
+from app.core.rate_limiter import (
+    ACCOUNT_LOGIN_FAILURE_LIMIT,
+    check_account_login_failure,
+    is_account_login_blocked,
+    reset_account_login_failures,
+    get_account_login_retry_after,
+)
+
+from app.core.config import (
+    RESET_PASSWORD_LIMIT,
+    RESET_PASSWORD_WINDOW,
+)
+
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
 
 
 @router.post(
@@ -97,6 +109,20 @@ async def login(
     )
 
     email = login_data.email.strip().lower()
+    account_blocked = await is_account_login_blocked(email)
+
+    if account_blocked:
+        retry_after = await get_account_login_retry_after(
+        email
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+            headers={
+                "Retry-After": str(retry_after),
+            },
+        )
 
     # Check whether login is blocked
     blocked = await is_login_blocked(
@@ -132,6 +158,8 @@ async def login(
             email,
         )
 
+        await reset_account_login_failures(email)
+
         return tokens
 
     except ValueError as exc:
@@ -142,8 +170,16 @@ async def login(
             email,
         )
 
+        # Failed login → record account attempt
+        account_attempts = await check_account_login_failure(
+            email
+        )
+
         # Block after maximum attempts
-        if attempts >= 5:
+        if (
+            attempts >= 5
+            or account_attempts >= ACCOUNT_LOGIN_FAILURE_LIMIT
+        ):
             retry_after = await get_login_retry_after(
                 ip_address,
                 email,
@@ -159,11 +195,13 @@ async def login(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
+            detail="Invalid email or password.",
             headers={
                 "WWW-Authenticate": "Bearer",
             },
         )
+
+
 
 @router.get(
     "/me",
@@ -338,69 +376,6 @@ async def forgot_password(
         "success": True,
         "link": reset_link,
         "message": "If the email exists, a password reset link has been sent.",
-    }
-
-@router.post("/reset-password")
-def reset_password(
-    data: ResetPasswordRequest,
-    db: Session = Depends(get_db),
-):
-    token_hash = hash_password_reset_token(data.token)
-
-    result = db.execute(
-        select(PasswordResetToken).where(
-            PasswordResetToken.token_hash == token_hash
-        )
-    )
-
-    reset_token = result.scalar_one_or_none()
-
-    if not reset_token:
-        return {
-            "success": False,
-            "message": "Invalid or expired reset token.",
-        }
-
-    now = datetime.utcnow()
-
-
-    if reset_token.used:
-        return {
-            "success": False,
-            "message": "Invalid or expired reset token.",
-        }
-
-    if reset_token.expires_at <= now:
-        return {
-            "success": False,
-            "message": "Invalid or expired reset token.",
-        }
-
-    result = db.execute(
-        select(User).where(
-            User.id == reset_token.user_id
-        )
-    )
-
-    user = result.scalar_one_or_none()
-
-    if not user:
-        return {
-            "success": False,
-            "message": "Invalid or expired reset token.",
-        }
-
-    # Use your existing password hashing function
-    user.password_hash = hash_password(data.new_password)
-
-    # Make the token single-use
-    reset_token.used = True
-
-    db.commit()
-
-    return {
-        "success": True,
-        "message": "Password reset successfully.",
     }
 
 

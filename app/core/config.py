@@ -61,3 +61,18 @@ REDIS_URL = os.getenv(
     "REDIS_URL",
     "redis://localhost:6379/0",
 )
+
+# Password reset rate limiting
+RESET_PASSWORD_LIMIT = int(
+    os.getenv(
+        "RESET_PASSWORD_LIMIT",
+        "10",
+    )
+)
+
+RESET_PASSWORD_WINDOW = int(
+    os.getenv(
+        "RESET_PASSWORD_WINDOW",
+        str(15 * 60),
+    )
+)
